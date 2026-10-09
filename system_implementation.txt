@@ -1,0 +1,1116 @@
+# EarthTrend Myanmar — Complete Implementation Plan
+NASA Space Apps Challenge: "Be An Earth System Trend Detective!"
+
+## 1. Project Overview
+
+Build a full-stack climate-trend analysis web application focused initially on Myanmar. The application analyzes rainfall, air temperature, and relative humidity over time, visualizes regional changes on interactive maps and charts, identifies increasing and decreasing trends, and reports statistical significance with clear methodology and data limitations.
+
+Working project name: EarthTrend Myanmar.
+
+Primary goals:
+1. Explore rainfall, air temperature, and relative humidity over a configurable period.
+2. Visualize monthly and annual changes using charts and geographic maps.
+3. Identify regions with increasing, decreasing, or statistically insignificant trends.
+4. Compare administrative regions and climate variables.
+5. Explain findings in plain language based on actual computed results.
+6. Export time-series data, trend summaries, and map features.
+
+Recommended MVP:
+- Geography: Myanmar.
+- Variables: rainfall, 2 m air temperature, 2 m relative humidity.
+- Initial analysis period: 2001–2025, subject to verified source coverage.
+- Monthly data, annual summaries, and one documented seasonal analysis.
+- Myanmar regional map, region comparison, statistical trend analysis, and CSV/GeoJSON exports.
+
+Do not assume opposing regional trends exist before analyzing the data. Do not fabricate climate values or scientific results.
+
+## 2. Technology Stack
+
+### Frontend
+- React
+- Vite
+- TypeScript
+- Tailwind CSS
+- React Router
+- TanStack Query for API fetching and caching
+- Recharts for time-series charts
+- React-Leaflet and Leaflet for interactive maps
+- Lucide React for icons
+- Zod for runtime validation where useful
+
+### Backend
+- Python
+- FastAPI
+- Uvicorn
+- Pydantic and pydantic-settings
+- HTTPX for NASA API requests
+- Xarray for labelled multidimensional climate data (time, latitude, longitude), grid-wise calculations, masking, resampling, and NetCDF/ Zarr-ready workflows
+- Dask as an optional Xarray execution backend if datasets become too large for memory; do not add it until needed
+- Pandas and NumPy for tabular cleaning, validation, and aggregation
+- SciPy for statistical support, confidence intervals, and robust numerical routines
+- PyMannKendall for Mann–Kendall trend testing and Sen's slope methods; wrap it behind tested project functions
+- statsmodels for optional regression diagnostics and autocorrelation-aware methods where justified
+- xskillscore as an optional helper for gridded statistical workflows if its methods are actually used
+- GeoPandas and Shapely for vector boundaries and spatial joins
+- pytest and HTTPX test client for testing
+- Ruff for linting and formatting
+
+### Data and storage
+- NASA POWER monthly regional API
+- Myanmar administrative-boundary GeoJSON from geoBoundaries or another documented, appropriately licensed source
+- Local JSON cache for raw NASA responses
+- NetCDF (`.nc`) as the preferred labelled gridded-analysis format when practical; Parquet/CSV for normalized tables and exports
+- Xarray `Dataset` / `DataArray` objects as the in-memory analysis representation
+- Optional Zarr for chunked, cloud-friendly arrays if dataset size justifies it
+- Optional SQLite if persistent metadata or cached analysis records are needed
+- PostgreSQL/PostGIS only as a future enhancement if scale or concurrent spatial queries require it
+
+Use a modular monolith: one React app, one FastAPI service, one analysis package, and a simple cache. Do not introduce microservices, Redis, Celery, Kubernetes, authentication, or an LLM unless a concrete requirement appears.
+
+## 3. Required Data Sources
+
+### Dataset A: NASA POWER monthly meteorological data
+
+Official documentation:
+https://power.larc.nasa.gov/docs/services/api/temporal/monthly/
+
+Parameter dictionary:
+https://power.larc.nasa.gov/parameters/
+
+NASA POWER API base:
+https://power.larc.nasa.gov/api
+
+Regional endpoint:
+https://power.larc.nasa.gov/api/temporal/monthly/regional
+
+Initial parameters to verify against the official parameter dictionary and live API:
+- Rainfall / precipitation: PRECTOTCORR
+- Air temperature at 2 metres: T2M
+- Relative humidity at 2 metres: RH2M
+
+Use the NASA POWER meteorological community supported by the selected parameters (initially investigate `SB`, and verify against the current API documentation).
+
+Initial approximate Myanmar bounding box:
+- latitude minimum: 9
+- latitude maximum: 29
+- longitude minimum: 92
+- longitude maximum: 102
+
+This bounding box is only an initial request area, not Myanmar's exact administrative boundary. The regional endpoint may return grid cells outside the country; mask the results using Myanmar's boundary geometry.
+
+Initial requested period: 2001–2025, but dynamically verify the actual available period. Do not assume all variables have complete coverage through the requested end year. Display actual coverage in the UI.
+
+Regional API requests are made one parameter at a time. Fetch each variable separately.
+
+### Dataset B: Myanmar administrative boundaries
+
+Source:
+https://www.geoboundaries.org/
+
+Download and document:
+- Myanmar national boundary.
+- First-level administrative boundaries (states and regions / ADM1), if available from the selected source.
+
+Store the downloaded GeoJSON locally under the backend data directory, or serve it from the frontend's public directory if the licence and file size permit.
+
+Document source, licence, administrative level, retrieval date, and stable region identifiers. Use ADM1 for the MVP; township boundaries are optional.
+
+### Dataset C: Derived analytical dataset
+
+Generate this internally from NASA POWER and the boundary dataset. It is not a separate source download.
+
+Normalized records should include:
+- grid_id
+- latitude
+- longitude
+- timestamp
+- year
+- month
+- variable
+- value
+- unit
+- source_parameter
+- data_quality_status
+- region_id, if assigned
+
+Derived outputs include monthly, annual, and seasonal summaries; trend slopes; p-values; adjusted p-values; confidence intervals; trend statuses; coverage metrics; and regional comparisons.
+
+## 4. Critical Data and Unit Rules
+
+Before writing the trend analysis, inspect actual NASA responses and verify each parameter's units and temporal meaning.
+
+Rainfall:
+- Confirm whether the source's monthly value is a mean daily precipitation rate (for example, mm/day) or an accumulated monthly total.
+- If documented as a mean daily rate in mm/day, calculate estimated monthly accumulation by multiplying by the number of days in that month, then sum monthly totals for annual rainfall.
+- If the source already provides an accumulated value, do not multiply it again.
+- Document any unit conversion and its assumptions.
+
+Air temperature:
+- Use the source's documented units.
+- For Celsius values, annual values should be means of valid monthly values (or a suitable time-weighted mean if appropriate), not sums.
+- Convert units only if necessary and document the conversion.
+
+Relative humidity:
+- Use the documented units, usually percent.
+- Annual and seasonal values should be means, not sums.
+- Describe trend slope in percentage points per year, not percent per year, unless a relative-percent change calculation is explicitly used.
+
+For all variables:
+- Handle missing-value sentinels as missing, not as zero.
+- Track valid months and years.
+- Preserve source metadata and units.
+- Never silently substitute fake or synthetic data for missing NASA data.
+- Store raw responses and normalized data separately.
+- Record source URL, retrieval time, requested period, parameter, and transformation version.
+
+## 5. Data Ingestion Strategy
+
+Implement the following pipeline:
+1. Request data from NASA POWER, one variable at a time.
+2. Validate HTTP status, response structure, metadata, coordinates, units, and time coverage.
+3. Normalize the response into a consistent grid-and-month representation.
+4. Mask cells using a documented Myanmar boundary rule.
+5. Aggregate monthly values into annual and seasonal summaries using variable-specific rules.
+6. Calculate trends and statistical significance.
+7. Cache source responses, normalized data, and derived analysis results.
+
+Use configurable parameters, date ranges, and bounding boxes rather than hard-coding them into the analysis logic.
+
+Example temperature request template (verify actual response schema and parameters before production use):
+
+https://power.larc.nasa.gov/api/temporal/monthly/regional?latitude-min=9&latitude-max=29&longitude-min=92&longitude-max=102&parameters=T2M&community=SB&start=2001&end=2025&format=JSON
+
+Create equivalent requests for PRECTOTCORR and RH2M after confirming they are supported in the selected API service.
+
+Use:
+- HTTP timeouts
+- bounded retries for transient failures
+- clear error messages for upstream outages
+- cache keys that include parameter, bounds, period, community, and transformation version
+- configurable cache TTL
+- no repeated NASA download for every frontend filter change
+
+Document whether grid cells are included based on cell centre or fractional-area overlap with Myanmar. Keep the policy consistent across analysis and maps.
+
+## 6. Suggested Project Structure
+
+earthtrend-myanmar/
+  frontend/
+    src/
+      app/
+        App.tsx
+        router.tsx
+      components/
+        layout/
+        charts/
+        maps/
+        filters/
+        ui/
+      pages/
+        DashboardPage.tsx
+        TrendsPage.tsx
+        MapExplorerPage.tsx
+        ComparePage.tsx
+        MethodologyPage.tsx
+      features/
+        climate/
+        trends/
+        regions/
+      hooks/
+      lib/
+      types/
+      main.tsx
+    public/
+      data/
+        myanmar-admin1.geojson
+    package.json
+    vite.config.ts
+  backend/
+    app/
+      main.py
+      core/
+        config.py
+      api/
+        routes/
+          health.py
+          metadata.py
+          climate.py
+          trends.py
+          maps.py
+          export.py
+      schemas/
+      services/
+        nasa_power.py
+        ingestion.py
+        normalization.py
+        aggregation.py
+        trend_analysis.py
+        spatial_analysis.py
+        export.py
+      repositories/
+      utils/
+    data/
+      boundaries/
+      raw/
+      processed/
+      xarray/
+      cache/
+    tests/
+      unit/
+      integration/
+      fixtures/
+    pyproject.toml
+    .env.example
+  docs/
+    data-dictionary.md
+    methodology.md
+    api-contract.md
+  .gitignore
+  docker-compose.yml
+  README.md
+
+Keep climate caches and large data files out of Git unless intentionally included and redistribution is permitted. Keep analysis functions independent of FastAPI routes so they can be tested without the web server.
+
+## 7. Phase-by-Phase Implementation Roadmap
+
+### Phase 1 — Define scope and scientific rules
+Tasks:
+- Set Myanmar as the initial study area.
+- Define three variables and verified units.
+- Set requested default period to 2001–2025 while exposing actual available coverage.
+- Define monthly, annual, and seasonal aggregation rules.
+- Choose and document a boundary masking policy.
+- Define the minimum coverage rule and trend methodology.
+- Create the data dictionary and methodology documents.
+
+Deliverables:
+- docs/data-dictionary.md
+- docs/methodology.md
+
+Acceptance criteria:
+- Every variable has a verified parameter code, unit, temporal meaning, and aggregation rule.
+- No chart or analysis uses undocumented units.
+
+### Phase 2 — Build and verify data ingestion
+Tasks:
+- Implement NASA POWER client using HTTPX.
+- Build configurable regional API requests.
+- Fetch each variable independently.
+- Validate responses and preserve metadata.
+- Implement missing-value handling and bounded retries.
+- Normalize results to a consistent schema.
+- Cache raw responses and normalized data.
+- Add a small CLI command to ingest data for testing.
+
+Deliverable: repeatable download and normalization pipeline.
+
+Acceptance criteria:
+- Each variable can be downloaded independently.
+- Returned grid/time data can be parsed.
+- Source metadata and units are preserved.
+- Failed downloads do not produce apparently valid empty datasets.
+
+### Phase 3 — Implement the analysis engine
+Tasks:
+- Implement monthly, annual, and seasonal aggregation.
+- Implement baseline-period selection if needed.
+- Calculate trend direction and magnitude.
+- Calculate statistical significance and uncertainty.
+- Apply minimum coverage rules.
+- Generate regional rankings and comparison summaries.
+- Write unit tests using synthetic test series.
+
+Deliverable: reusable Python functions independent of FastAPI and React.
+
+Acceptance criteria:
+- Synthetic increasing, decreasing, and constant series behave sensibly.
+- Rainfall aggregation and temperature/humidity means are tested separately.
+- Seasonal cycles and missing data are handled explicitly.
+
+### Phase 4 — Add geographic analysis
+Tasks:
+- Load Myanmar boundary GeoJSON.
+- Mask grid cells using the chosen policy.
+- Assign grid cells to administrative areas where feasible.
+- Calculate per-cell trends.
+- Generate regional statistics.
+- Produce map-ready GeoJSON or JSON.
+
+Deliverable: trend results linked to valid Myanmar grid cells or administrative areas.
+
+Acceptance criteria:
+- Cells outside the chosen Myanmar mask are excluded.
+- Region identifiers are stable.
+- Missing cells are not classified as zero trends.
+
+### Phase 5 — Build the FastAPI service
+Tasks:
+- Implement health and metadata endpoints.
+- Implement time-series endpoint.
+- Implement trend summary endpoint.
+- Implement grid-trend endpoint.
+- Implement regions and regional-summary endpoints.
+- Implement comparison and export endpoints.
+- Add request/response schemas, CORS, consistent errors, and API docs.
+
+Deliverable: documented API available through `/docs`.
+
+Acceptance criteria:
+- Responses are typed and stable.
+- Invalid variable/date parameters return clear 4xx errors.
+- The frontend never calls NASA POWER directly.
+
+### Phase 6 — Build the React interface
+Tasks:
+- Build responsive navigation and dashboard.
+- Add variable, year-range, and region filters.
+- Add KPI cards, time-series charts, and map legend.
+- Add interactive map cells or administrative regions.
+- Add regional comparisons.
+- Add loading, empty, error, and stale-data states.
+- Add accessible labels and responsive layouts.
+
+Deliverable: user can go from national summary to a region and inspect its trend.
+
+Acceptance criteria:
+- Filters update all relevant views consistently.
+- Charts display units and dates.
+- Tooltips explain trends and significance.
+- Map colours agree with the legend.
+
+### Phase 7 — Exports and explanations
+Tasks:
+- Export filtered time series as CSV.
+- Export trend summaries as CSV or JSON.
+- Export map results as GeoJSON.
+- Add source attribution and methodology page.
+- Generate plain-language interpretations from actual computed results using templates.
+
+Deliverable: users can reproduce results and understand the methodology.
+
+Acceptance criteria:
+- Exported data matches the UI filters.
+- Explanations do not invent causes.
+- Statistical significance is not overstated.
+
+### Phase 8 — Testing, deployment, and demo preparation
+Tasks:
+- Run unit tests for aggregation, trend calculations, and masking.
+- Run integration tests for NASA client and API endpoints.
+- Test frontend loading/error states.
+- Build frontend and configure deployment.
+- Provide a clearly labelled offline fallback using cached data.
+- Prepare a short demo script and limitations section.
+
+Deliverable: repeatable working demo with documented setup.
+
+Acceptance criteria:
+- App starts from README instructions.
+- Cached data can be used if NASA is temporarily unavailable.
+- Synthetic demo data is never presented as actual NASA data.
+
+## 8. Statistical Analysis Design
+
+Calculate and display:
+- Start/end summaries
+- Absolute change
+- Sen's slope
+- Mann–Kendall p-value or an appropriate seasonal variant
+- Confidence interval where supported
+- Adjusted p-value for grid-level multiple testing
+- Trend status
+- Valid years/months and coverage
+
+Use PyMannKendall and/or appropriate SciPy methods. Verify the assumptions of the selected method.
+
+Recommended statuses:
+- significant_increasing: positive slope and corrected p-value below threshold
+- significant_decreasing: negative slope and corrected p-value below threshold
+- not_significant: sufficient data but test does not meet threshold
+- insufficient_data: data coverage or quality is inadequate
+
+Rules:
+1. For annual trends, aggregate monthly values into annual observations and analyse the annual series.
+2. For seasonal trends, use a consistently defined season across years.
+3. Do not blindly apply an ordinary Mann–Kendall test to raw monthly values with a strong annual cycle. Use a seasonal method or annual/seasonal summaries.
+4. Consider serial correlation and use a suitable method/correction when appropriate.
+5. Apply a multiple-comparison method such as Benjamini–Hochberg false discovery rate across the defined family of grid-cell tests.
+6. Distinguish effect size from statistical significance.
+7. Use a default significance threshold of 0.05 and document it.
+8. Do not treat a non-significant result as proof that no change exists.
+9. Do not claim correlation proves causation.
+
+Variable-specific outputs:
+- Rainfall: accumulated mm/year or mm/season; slope in mm/year.
+- Air temperature: mean degrees Celsius; slope in °C/year.
+- Relative humidity: mean percent; slope in percentage points/year.
+
+## 8A. Detailed Xarray Data Model and Calculation Pipeline (Required)
+
+This section expands the statistical design above and is an implementation requirement, not an optional suggestion. Use Xarray for the gridded climate-analysis core. Keep the existing FastAPI and React architecture, but ensure all numerical results come from tested backend functions.
+
+### 8A.1 Why Xarray is used
+
+Xarray provides labelled dimensions and coordinates for gridded climate datasets. Represent gridded observations as an `xarray.Dataset` with dimensions such as `time`, `latitude`, and `longitude`; variables can be stored as separate `DataArray` objects. Use explicit coordinates, units, variable attributes, source metadata, and a consistent time coordinate. Do not rely on array position alone to identify a grid cell.
+
+Expected internal dataset shape (conceptual, not hard-coded data):
+- Dimensions: `time`, `latitude`, `longitude`.
+- Data variables: `precipitation`, `temperature`, `relative_humidity`.
+- Coordinates: timestamp/month, latitude, longitude, and optionally stable `grid_id`.
+- Attributes: source, source parameter, source URL, retrieval time, original unit, processing version, and boundary-mask policy.
+
+Implement a loader that converts validated NASA POWER regional responses into a canonical Xarray representation. If the live NASA endpoint returns a table or JSON structure rather than a native gridded NetCDF file, parse the response first and construct the `Dataset` from the validated records. Do not assume NASA's JSON response is already an Xarray-compatible multidimensional array.
+
+Suggested internal conventions:
+- `time`: one timestamp per month, consistently represented as month-start or month-end and documented.
+- `latitude` and `longitude`: numeric coordinates in decimal degrees.
+- Variable names use stable internal names; retain original NASA parameter codes in attributes.
+- Missing or invalid values become `NaN` / masked values, never zero.
+- Each variable has a `units` attribute and a `long_name`.
+- Store a `processing_version` so changed conversion logic invalidates old derived caches.
+
+Create and test functions such as:
+- `load_power_response_to_dataset(response, parameter) -> xr.Dataset`
+- `validate_climate_dataset(ds) -> ValidationReport`
+- `apply_myanmar_mask(ds, boundary, policy) -> xr.Dataset`
+- `convert_precipitation_units(ds) -> xr.Dataset`
+- `aggregate_monthly_to_annual(ds) -> xr.Dataset`
+- `aggregate_monthly_to_seasonal(ds, season_definition) -> xr.Dataset`
+- `calculate_grid_trends(data_array, method_config) -> xr.Dataset`
+- `adjust_grid_pvalues(p_values, method="fdr_bh") -> xr.DataArray`
+- `calculate_impact_indicators(ds, baseline, comparison_period) -> xr.Dataset`
+
+These are conceptual contracts. Define actual types and schemas in code; keep numerical functions independent from API request handlers.
+
+### 8A.2 Dataset validation before calculations
+
+Before running any aggregation or trend calculation:
+1. Confirm the variable exists and has the expected dimensions.
+2. Confirm the time coordinate is parseable, monotonic, and has no unintended duplicate months.
+3. Sort time if required, and explicitly resolve duplicates rather than silently keeping arbitrary rows.
+4. Confirm latitude/longitude coordinates are numeric and have no impossible values.
+5. Validate units and parameter identity against the official NASA POWER metadata.
+6. Check source coverage, missing-value sentinels, out-of-range values, and gaps.
+7. Check that a single variable does not accidentally mix incompatible units or parameter versions.
+8. Record the valid observation count and coverage percentage at each grid cell.
+9. Keep a validation report and surface warnings to the UI/methodology panel.
+10. Fail clearly if the data cannot be interpreted safely; do not continue with a plausible-looking but invalid result.
+
+Use Xarray alignment explicitly when combining variables. Do not assume independent parameter responses have identical coordinates or dates. Align on shared coordinates and explain excluded coordinates/time periods.
+
+### 8A.3 Unit conversion and temporal aggregation
+
+Apply conversion rules only after verifying NASA POWER's parameter metadata and the actual returned temporal meaning.
+
+**Rainfall / precipitation**
+- Verify whether `PRECTOTCORR` monthly output represents mean daily precipitation rate, monthly accumulation, or another documented quantity in the selected endpoint.
+- If the documented value is a mean daily rate in `mm/day`, calculate monthly accumulation as `daily_rate * days_in_month`; use calendar-aware month lengths from the time coordinate. Annual rainfall is the sum of valid monthly accumulations, subject to the coverage rule.
+- If the source already reports monthly accumulated `mm`, do not multiply by month length.
+- Do not mix monthly totals and daily rates in one series.
+- Store both the original value/unit and the converted value/unit in provenance metadata.
+- If a year is missing months, either mark its annual total invalid under the chosen coverage policy or report it as a clearly labelled partial-year total. Never compare partial annual totals as if they were complete.
+
+**Air temperature**
+- Convert Kelvin to Celsius only if the source actually returns Kelvin: `degC = K - 273.15`. Do not apply conversion twice.
+- Annual and seasonal summaries are means, not sums.
+- A monthly mean series can use an equal-month mean for consistency with the stated method; if a duration-weighted mean is chosen, document and test that choice. Use the same choice across the full comparison.
+
+**Relative humidity**
+- Retain percent if that is the verified source unit.
+- Annual and seasonal summaries are means, not sums.
+- Report slopes as percentage points per year, not relative percent per year, unless a separate relative-change metric is explicitly calculated and named.
+
+**Coverage policy**
+- Configure a default minimum annual completeness rule, for example at least 10 of 12 valid months for temperature/humidity and a stricter complete-month rule for rainfall totals. Make the chosen threshold visible in methodology and API metadata.
+- For seasonal series, require a configured minimum number of valid months for the season.
+- Use the same completeness rule for trend calculations and impact comparisons.
+- Return both `valid_months` and `coverage_fraction` so users can see when annual values are partial.
+- A minimum count is a policy choice, not a guarantee that missingness is harmless. Include a sensitivity test comparing strict complete-year results with the configured threshold.
+
+### 8A.4 Annual and seasonal series using Xarray
+
+Build annual and seasonal time series with Xarray operations, but encode variable-specific aggregation rules explicitly rather than applying one generic `.mean()` to every variable.
+
+Conceptual implementation pattern:
+- Temperature/humidity: group or resample by calendar year and calculate the mean after applying the completeness mask.
+- Rainfall: first normalize to a monthly accumulation, then sum monthly accumulations by year after applying the completeness mask.
+- Seasonal summaries: define a named, fixed season (for example, meteorological seasons) and document how seasons crossing December/January are assigned to a season-year.
+- For monsoon-focused analysis, define exact months before calculation. Do not change season months silently between regions or years.
+- Keep both a result value and its coverage metadata. An annual value that fails completeness criteria must be missing, not a zero.
+- Check the resulting annual coordinate has one value per expected year and flag gaps.
+
+Add tests for leap years, 28/29/30/31-day months, missing months, duplicate timestamps, season-year assignment, and each variable's aggregation semantics.
+
+### 8A.5 Current trend and period selection
+
+The interface must distinguish a long-term trend from a recent/current-period trend. “Current trend” means the trend over the latest selected and adequately covered interval, not a real-time forecast and not an assumption that the latest year is complete.
+
+Provide:
+- Full-period trend, default requested range 2001–2025 subject to actual data coverage.
+- Recent-period trend with configurable start/end years or a documented default recent window (for example, the latest 10 complete years).
+- A latest-complete-year indicator based on data coverage, rather than the machine's current year.
+- Optional rolling summaries for exploration; label rolling estimates as descriptive and do not confuse them with independent significance tests.
+
+For every trend request:
+1. Resolve the actual available time range for the selected variable and geography.
+2. Remove years that fail the configured completeness rule.
+3. Require a configurable minimum number of valid annual observations before inference. Set a conservative default such as 10 annual points for the standard annual trend view, and document any lower exploratory threshold separately.
+4. Return requested period and effective period, including any dropped years.
+5. Calculate the slope and significance on the same effective series.
+6. Report the valid observation count and coverage fraction.
+7. Do not label a partially observed latest year as a complete year.
+8. If the selected recent interval has too few valid years, return `insufficient_data` with an explanation instead of a trend classification.
+
+### 8A.6 Trend magnitude and direction
+
+For each annual or consistently defined seasonal series, calculate:
+- First and last valid values, with their years.
+- Absolute change between the first and last valid observations.
+- Sen's slope (robust median of pairwise slopes) as the preferred robust trend magnitude.
+- A 95% confidence interval for the slope where the chosen implementation supports it.
+- Mann–Kendall test statistic, raw p-value, and method name.
+- Adjusted p-value where multiple grid cells/regions are tested together.
+- Direction and status, derived from slope sign and the applicable p-value.
+- Valid years, expected years, coverage fraction, and any quality flags.
+
+Use the actual year difference for slope denominators. If observations are irregular because years are missing, use their year coordinates, not row indices. For rainfall, report Sen's slope in `mm/year`; for temperature, `degC/year`; for relative humidity, percentage points/year. A slope is a rate, not the same thing as the difference between endpoints.
+
+Mann–Kendall detects monotonic evidence, not every possible nonlinear change. Include a plot of the time series and an optional fitted Sen trend line; do not imply that a line captures all variability.
+
+### 8A.7 Statistical significance and assumptions
+
+Implement a single tested significance module. Do not scatter p-value logic across API routes or frontend components.
+
+Default policy:
+- Nominal alpha: 0.05.
+- Use annual summaries for annual trend analysis.
+- For monthly data with a strong annual cycle, use a seasonality-aware method such as Seasonal Mann–Kendall, or aggregate to a consistent seasonal/annual series first. Do not run ordinary Mann–Kendall blindly on raw monthly values.
+- Inspect serial correlation. Where material autocorrelation is present, use a documented suitable method, such as a variance-corrected/pre-whitened or other defensible trend test. State the method used per result.
+- Do not automatically treat every p-value from a standard test as valid when assumptions are violated.
+- Keep raw p-values and adjusted p-values separate.
+- For grid-cell tests, define the family of tests in advance (for example, all valid grid cells for one variable and period), then apply Benjamini–Hochberg false discovery rate correction to that family. Do not adjust each cell independently.
+- If region-level tests form a separate family, document and correct that family separately.
+- Use adjusted p-values to assign significance status on gridded maps when multiple testing is part of the analysis.
+- A non-significant p-value means evidence is insufficient at the chosen threshold; it does not prove there is no trend.
+- Statistical significance does not imply practical importance or establish a physical cause.
+
+Use a method registry/configuration so each output reports the test name, autocorrelation handling, alpha, correction method, and analysis version. Add reproducible tests for edge cases: all-missing series, constant series, too-short series, ties, missing years, monotonic increase/decrease, autocorrelation, and p-values at threshold boundaries.
+
+### 8A.8 Grid-wise calculations
+
+Use Xarray's labelled dimensions to run calculations independently over each latitude/longitude cell along the time dimension. Because Mann–Kendall and Sen's slope are not simple built-in reductions, implement a tested vectorized function or a safe loop over spatial cells, depending on grid size. Prefer correctness and traceability over premature optimization.
+
+For each grid cell:
+1. Apply Myanmar spatial mask.
+2. Select the effective annual/seasonal series.
+3. Apply coverage and minimum-observation rules.
+4. Calculate slope, confidence interval if supported, test statistic, and raw p-value.
+5. Record valid count and effective period.
+6. Collect raw p-values across the defined valid grid-cell family.
+7. Apply FDR correction to the collected p-values.
+8. Assign status only after correction.
+9. Reconstruct an Xarray `Dataset` with latitude/longitude coordinates and named outputs such as `sen_slope`, `p_value`, `adjusted_p_value`, `trend_status_code`, `valid_years`, and `coverage_fraction`.
+10. Export map-ready results without dropping provenance or units.
+
+Do not pass `NaN` values as zeros into statistical functions. Ensure results remain aligned to their original coordinates after correction. A masked or insufficient cell must remain masked/insufficient, not be assigned a neutral or decreasing colour.
+
+### 8A.9 Impact analysis: what the app may and may not claim
+
+The app should describe the observed implications of climate trends using transparent climate indicators. It must not claim that a rainfall or temperature trend caused a specific social, agricultural, health, flood, drought, or economic impact unless suitable impact/outcome data and a defensible study design are added.
+
+Implement two layers of “impact”:
+
+**Layer A — Climate-change indicators derived from the climate dataset (required MVP)**
+- Baseline-versus-recent mean difference for temperature and relative humidity.
+- Baseline-versus-recent rainfall total/mean difference using the correct rainfall units and temporal definition.
+- Absolute difference and, only when the baseline is safely non-zero, relative percentage difference.
+- Number of years above/below a defined baseline percentile or threshold, if the percentile/threshold is documented.
+- Frequency of unusually wet/dry years relative to a fixed baseline distribution.
+- For temperature, frequency of years exceeding a fixed baseline percentile.
+- Spatial area/count of valid grid cells showing statistically significant increase/decrease, plus the percentage of valid tested cells. Clearly distinguish cell counts from area-weighted percentages.
+- Regional summaries with uncertainty and coverage.
+- Optional anomaly time series: observation minus baseline climatology for the matching month or season.
+- Optional standardized anomaly only if the baseline standard deviation is non-zero and the method is documented.
+
+**Layer B — Potential sector relevance (carefully worded, optional narrative)**
+- Provide contextual descriptions such as “a sustained decrease in seasonal rainfall may be relevant to water availability planning” or “higher mean temperature may increase heat-stress concerns.”
+- Label these as potential relevance, not measured local impacts or causal conclusions.
+- Do not infer crop-yield loss, disease incidence, flood damage, drought damage, or economic cost from climate variables alone.
+- To quantify those outcomes in a future version, integrate documented external outcome data (for example, agricultural yield, streamflow, disaster-loss records, population exposure, or health data) and use an explicitly described analysis design. Record the source, temporal/spatial resolution, missingness, and confounders.
+
+### 8A.10 Baseline and anomaly calculations
+
+Allow the user to select a baseline period only from years with suitable coverage; provide a documented default baseline if source coverage supports it. Do not hard-code a baseline that is unavailable in the actual dataset.
+
+For each variable and grid cell:
+- Calculate baseline monthly climatology for each calendar month when monthly data are used.
+- Calculate annual or seasonal baseline means for the corresponding aggregation.
+- Calculate anomaly = observed value minus matching baseline climatology.
+- For precipitation, a relative anomaly may be useful, but only calculate `(observed - baseline) / baseline * 100` when baseline is non-zero and meaningful; otherwise return null with a reason.
+- For temperature and humidity, express absolute anomaly in the native unit (degrees Celsius or percentage points).
+- Keep baseline period, valid sample count, and completeness information with the output.
+- When comparing baseline and recent periods, apply the same month/season definitions and completeness criteria to both periods.
+- Report both absolute and relative differences where scientifically meaningful; do not use a relative percentage for temperature as the default because Celsius has an arbitrary zero.
+
+### 8A.11 Spatial area and region impact summaries
+
+For grid cells, do not calculate national affected-area percentages by simply counting all cells unless cell areas are equal enough for the documented approximation. Latitude/longitude grid-cell area varies with latitude. Prefer area-weighted summaries using a documented cell-area estimate or calculate area weights proportional to `cos(latitude)` for a regular latitude/longitude grid as an approximation. Confirm grid spacing and geometry before using this shortcut.
+
+For a region summary:
+- Apply the same boundary and data coverage policy.
+- State whether a cell is assigned by its centre or fractional overlap.
+- Aggregate climate values using documented area weights where appropriate.
+- Calculate regional trends from the regional time series as well as summarizing grid trends; these are different estimands and must not be silently conflated.
+- Show valid cell count, effective area/weight coverage, and the fraction of the region represented by valid data.
+- Never present an area-impact percentage when the valid-data denominator is missing or zero.
+
+### 8A.12 Example calculation pseudocode
+
+The following is illustrative pseudocode for the intended implementation. Cursor must adapt it to the verified NASA response schema, write real tests, and avoid treating it as executable without validation.
+
+```python
+# Conceptual Xarray workflow
+ds = load_power_response_to_dataset(raw_response, parameter="T2M")
+ds = validate_and_normalize(ds)
+ds = apply_myanmar_mask(ds, boundary, policy="cell_center")
+
+# For temperature and humidity, calculate annual means.
+# For precipitation, convert to monthly accumulation first and then sum.
+annual = aggregate_monthly_to_annual(ds, variable="temperature")
+
+# Each cell is tested along time; output remains aligned to lat/lon.
+grid_results = calculate_grid_trends(
+    annual["temperature"],
+    method_config={
+        "trend_method": "sen_slope",
+        "significance_test": "mann_kendall",
+        "alpha": 0.05,
+        "multiple_testing": "benjamini_hochberg",
+        "minimum_valid_years": 10,
+    },
+)
+
+# Impact indicators compare matching annual/seasonal values across
+# a selected baseline and a recent, complete period.
+impact = calculate_impact_indicators(
+    ds,
+    baseline=(2001, 2010),
+    comparison_period=(2016, 2025),
+)
+```
+
+This pseudocode is a design guide only. Do not hard-code those example periods if coverage is unavailable. Do not assume a result exists merely because the function call is shown.
+
+## 8B. Required Analysis Result Schema
+
+Each trend result must include, where applicable:
+- `variable`, `unit`, `geography_type`, `geography_id`
+- `requested_start_year`, `requested_end_year`, `effective_start_year`, `effective_end_year`
+- `aggregation`, `season_definition`, `baseline_period`
+- `first_valid_value`, `first_valid_year`, `last_valid_value`, `last_valid_year`
+- `absolute_change`, `sen_slope`, `slope_unit`
+- `p_value`, `adjusted_p_value`, `confidence_interval_95`
+- `trend_direction`, `trend_status`
+- `significance_alpha`, `test_method`, `autocorrelation_method`, `multiple_testing_method`
+- `valid_years`, `expected_years`, `coverage_fraction`, `quality_flags`
+- `source`, `source_parameter`, `retrieved_at`, `processing_version`
+
+Each impact result must include:
+- indicator name, value, unit, formula/definition
+- baseline period and comparison period
+- valid observations and coverage
+- geography and spatial weighting policy
+- source and processing version
+- limitation/explanation text where needed
+
+The API and frontend must not invent missing fields. Use `null` plus an explanatory quality flag where a statistic cannot be calculated.
+
+## 8C. Trend and Impact Interpretation Rules
+
+Generate plain-language text from structured result fields and templates. The template must:
+- State variable, geography, period, slope, unit, and whether the trend met the significance rule.
+- Mention whether p-values are adjusted for grid-level multiple testing.
+- Mention coverage limitations when material.
+- Separate magnitude from significance.
+- Use “associated with”, “observed”, “indicates”, or “may be relevant to” rather than causal wording.
+- Avoid claims about why the trend occurred unless an independent attribution analysis supports them.
+- Avoid declaring a “climate emergency” or sector damage from trend statistics alone.
+- If the result is non-significant, say that the test did not find statistically significant evidence under the selected method and period, not that the climate is unchanged.
+- If data are insufficient, show a clear insufficient-data message instead of narrative inference.
+
+Examples of wording templates (values must be inserted from actual computed results):
+- “Across [region] during [effective period], annual mean temperature changed at an estimated Sen’s slope of [slope] °C/year. The trend [did/did not] meet the selected significance threshold after [correction method]. Coverage was [coverage].”
+- “Compared with [baseline period], mean [variable] in [comparison period] differed by [difference] [unit]. This is a climate indicator, not a direct measurement of [sector outcome].”
+- “The selected period has only [valid years] valid annual observations; the app therefore does not classify its trend.”
+
+## 8D. Additional API Endpoints for Baselines and Impacts
+
+Extend the API contract with these endpoints while retaining the original endpoints:
+- GET `/api/v1/analysis/config` — supported variables, units, default alpha, coverage policy, trend methods, correction method, and actual data coverage.
+- GET `/api/v1/trends/region` — regional trend series and statistics for a region/variable/period.
+- GET `/api/v1/impact/summary` — baseline-versus-recent indicators and significant-trend area summaries.
+- GET `/api/v1/impact/anomalies` — annual/monthly/seasonal anomalies relative to a selected baseline.
+- GET `/api/v1/trends/grid` — include slope, raw p-value, adjusted p-value, status, coverage, and method metadata.
+- GET `/api/v1/export/impact.csv` — export the currently filtered impact indicators.
+
+All query parameters must be validated. The server must use the same analysis functions and filters as the dashboard and exports. Do not let frontend code calculate significance or derive a competing version of the science.
+
+
+## 9. Backend API Contract
+
+Use `/api/v1` as the prefix.
+
+Endpoints:
+- GET `/api/v1/health`
+- GET `/api/v1/metadata`
+- GET `/api/v1/climate/timeseries`
+- GET `/api/v1/trends/summary`
+- GET `/api/v1/trends/grid`
+- GET `/api/v1/regions`
+- GET `/api/v1/regions/{region_id}/summary`
+- GET `/api/v1/compare`
+- GET `/api/v1/export/timeseries.csv`
+- GET `/api/v1/export/trends.csv`
+- GET `/api/v1/export/trends.geojson`
+
+Example request:
+GET `/api/v1/climate/timeseries?variable=temperature&region_id=MY-MM&start_year=2001&end_year=2025&aggregation=annual`
+
+Define actual region IDs after loading the selected boundary source. The example ID is illustrative.
+
+Example normalized response:
+{
+  "variable": "temperature",
+  "unit": "degC",
+  "aggregation": "annual",
+  "region_id": "MY-MM",
+  "start_year": 2001,
+  "end_year": 2025,
+  "source": "NASA POWER",
+  "data": [
+    {
+      "year": 2001,
+      "value": null,
+      "valid_months": 0
+    }
+  ]
+}
+
+This is only a schema example. Do not hard-code placeholder values into production endpoints.
+
+Example trend response:
+{
+  "variable": "temperature",
+  "unit": "degC",
+  "slope_per_year": null,
+  "p_value": null,
+  "adjusted_p_value": null,
+  "confidence_interval_95": null,
+  "trend_status": "insufficient_data",
+  "method": "seasonality-aware trend test",
+  "valid_years": 0
+}
+
+Use Pydantic response models. Keep JSON fields and enums consistent with TypeScript frontend types.
+
+API rules:
+- Validate variables, years, region IDs, and aggregation choices.
+- Use an explicit parameter whitelist.
+- Return 422 for invalid query parameters and 404 for unknown regions.
+- Return suitable 502/503 responses for upstream or data availability failures.
+- Return stable, explanatory error bodies.
+- Configure CORS only for specified development and production origins.
+- Expose `/docs` in development.
+- Normalize upstream responses before returning them.
+
+## 10. Frontend Pages and Features
+
+### Dashboard
+- Three variable summary cards.
+- National trend overview.
+- Data coverage and last updated date.
+- Regional changes based on actual analysis.
+- Source attribution.
+
+### Map Explorer
+- Interactive Myanmar map.
+- Variable selector and date range.
+- Annual/seasonal mode.
+- Grid-cell or administrative region display.
+- Diverging scale for positive/negative slopes.
+- Sequential scale for absolute values.
+- Legend and tooltips with units, status, and coverage.
+- Clear visual treatment for missing/insufficient data.
+- Click a region or cell to open details.
+
+### Trend Analysis
+- Full-period and recent-period trend selectors, showing requested versus effective periods.
+- Annual or seasonal time-series chart.
+- Trend line and confidence interval where supported.
+- Slope, significance, coverage, and method.
+- Plain-language interpretation based on actual API results.
+
+### Region Comparison
+- Compare two or more regions.
+- Use consistent units and periods.
+- Rank strongest increases and decreases.
+- Show uncertainty and data coverage.
+- Export comparison table.
+
+### Impact and Anomalies
+- Baseline-versus-recent comparison for the selected variable and region.
+- Anomaly chart with an explicit baseline period.
+- Summary of significant increasing/decreasing grid cells and area-weighted coverage.
+- Clear separation between observed climate indicators and potential sector relevance.
+
+### Methodology and Data
+- Variable definitions and units.
+- NASA POWER source details.
+- Coverage period and retrieval timestamp.
+- Aggregation rules.
+- Statistical test and significance threshold.
+- Multiple-testing correction.
+- Data limitations and attribution.
+
+Frontend requirements:
+- Use reusable chart, map, filter, KPI, legend, loading, and error components.
+- Use TanStack Query for data fetching and caching.
+- Keep active filters consistent across views.
+- Make tooltips explain units and classification.
+- Use accessible controls, responsive layouts, and colour-blind-friendly scales.
+- Never display a hard-coded sample result as a real observation.
+
+## 11. Export Functionality
+
+Implement:
+- CSV export for filtered time series.
+- CSV export for regional/grid trend summaries.
+- GeoJSON export for mapped trend features.
+
+Exports must use the same filters and calculations as the dashboard. Include variable, unit, period, method, coverage, and significance fields where applicable.
+
+## 12. Database and Cache Strategy
+
+MVP:
+- Raw NASA JSON in `backend/data/raw/`
+- Normalized Parquet/CSV in `backend/data/processed/`
+- Boundary files in `backend/data/boundaries/`
+- Cached API and analysis results in `backend/data/cache/`
+
+Optional SQLite:
+- dataset_versions
+- ingestion metadata
+- cached analysis results
+- job status if needed
+
+Future PostgreSQL/PostGIS:
+- useful for concurrent users, spatial queries, saved analyses, and larger datasets
+- not required for the first demo
+
+If using a database, model:
+- dataset_versions: source, parameter, date range, retrieval time, schema version
+- climate_observations: grid ID, timestamp, variable, value, unit, source version
+- regions: stable region ID, name, administrative level, geometry reference
+- trend_results: variable, geography ID, period, slope, p-values, confidence interval, method, coverage, calculation version
+
+Do not duplicate large geometry data in every observation.
+
+## 13. Environment Configuration
+
+Backend `.env.example`:
+
+APP_ENV=development
+API_PREFIX=/api/v1
+CORS_ORIGINS=http://localhost:5173
+NASA_POWER_BASE_URL=https://power.larc.nasa.gov/api
+DEFAULT_START_YEAR=2001
+DEFAULT_END_YEAR=2025
+DATA_DIR=./data
+CACHE_ENABLED=true
+CACHE_TTL_SECONDS=86400
+
+Frontend `.env.example`:
+
+VITE_API_BASE_URL=http://localhost:8000/api/v1
+
+Validate settings using pydantic-settings. Treat these values as defaults, not guarantees of source coverage. Use configurable paths rather than machine-specific absolute paths.
+
+## 14. Testing and Scientific Validation
+
+Test:
+- NASA response parsing and error handling.
+- Parameter/unit metadata.
+- Missing-value handling.
+- Rainfall conversion and aggregation.
+- Temperature/humidity means.
+- Increasing, decreasing, and constant synthetic series.
+- Seasonal data.
+- Xarray dimension/coordinate alignment and duplicate timestamps.
+- Leap years, monthly day counts, season-year assignment, and partial annual totals.
+- Baseline/anomaly calculations, zero-baseline handling, and period coverage parity.
+- Grid-wise significance and Benjamini–Hochberg correction over the declared test family.
+- Area weighting and missing-cell denominators for regional/national impact summaries.
+- Missing years and insufficient coverage.
+- Multiple-testing correction.
+- Spatial boundary masking.
+- API validation and errors.
+- Export consistency.
+- Frontend loading states, filters, legend, and chart updates.
+- End-to-end flow from variable selection to map/chart and export.
+
+Use synthetic data for unit tests only and label it clearly. Use HTTPX mocks/fixtures so ordinary tests do not depend on live NASA availability.
+
+## 15. Four-Hour Hackathon Schedule
+
+00:00–00:30 — Setup and data verification
+- Create frontend/backend projects.
+- Inspect a real NASA POWER response.
+- Verify parameter units and load Myanmar boundary data.
+
+00:30–01:15 — Ingestion and analysis
+- Fetch and cache one variable.
+- Normalize dates.
+- Calculate and test one annual trend.
+
+01:15–02:00 — API and map
+- Implement health, time-series, and grid-trend endpoints.
+- Display Myanmar boundaries and an initial valid data layer.
+
+02:00–02:45 — Dashboard and charts
+- Add filters, time-series charts, trend metrics, and region details.
+
+02:45–03:20 — Remaining variables
+- Integrate rainfall and humidity once the first variable works end-to-end.
+
+03:20–04:00 — Validation and demo
+- Test trend logic, fix map/API issues, verify significance labels, and prepare presentation.
+
+If processing the entire regional grid takes too long, start with a clearly labelled subset or selected locations. Do not present a small sample as a complete national analysis.
+
+## 16. Deployment and Developer Experience
+
+Provide:
+- Python dependency configuration and frontend package manifest.
+- Lockfiles or pinned compatible dependencies.
+- `.env.example` files.
+- `.gitignore`.
+- README setup instructions.
+- Data-ingestion and cache-refresh commands.
+- API endpoint examples.
+- Data dictionary and methodology documentation.
+- Troubleshooting instructions.
+- Optional Docker Compose.
+
+Recommended local development:
+- Vite frontend.
+- Uvicorn/FastAPI backend.
+- Local cached data.
+
+For a live demo, deploy the frontend to static hosting and backend to a Python-compatible host. Ensure cached data persists across restarts or configure a persistent volume. Do not assume ephemeral storage persists after redeployment.
+
+## 17. Implementation Instructions for Cursor
+
+Work in small verified stages. Do not attempt one massive untested generation.
+
+Stage 1: Create project skeleton, dependencies, configuration, and README.
+Stage 2: Verify a real NASA response; implement ingestion, normalization, and caching.
+Stage 3: Implement and test aggregation and trend calculations using synthetic fixtures.
+Stage 4: Load Myanmar boundaries and implement spatial masking.
+Stage 5: Implement FastAPI endpoints and validate schemas.
+Stage 6: Build the React dashboard, charts, and map.
+Stage 7: Implement comparisons, exports, and methodology content.
+Stage 8: Run tests, fix bugs, verify the full user flow, and finalize deployment instructions.
+
+After each stage:
+1. List files created or changed.
+2. Run relevant tests/build checks.
+3. Fix errors before proceeding.
+4. Report data-source limitations and unresolved scientific assumptions.
+5. Do not claim a feature is complete if it is a placeholder.
+
+If NASA is unavailable, use cached real data where available and show a clear warning. Do not silently replace real climate data with fake values.
+
+## 18. Definition of Done
+
+The project is complete when:
+- It starts using README instructions.
+- NASA POWER data can be ingested and cached.
+- All three variables have verified units and aggregation rules.
+- The map displays valid Myanmar grid/region results.
+- Annual and seasonal trends can be inspected.
+- Trend magnitude and significance are clearly distinguished.
+- Regional comparisons work.
+- CSV and GeoJSON exports work.
+- Analysis and API tests pass, including Xarray coordinate alignment, grid-wise trends, multiple-testing correction, and impact indicators.
+- Baseline comparisons and anomaly calculations are reproducible and exported consistently.
+- Data sources and methodology are documented.
+- Missing data and upstream failures are handled clearly.
+- No fabricated scientific results are presented as real observations.
+
+## 19. Final Priorities
+
+Prioritize:
+1. Correct NASA data ingestion and unit validation.
+2. One correct and tested trend calculation.
+3. Myanmar spatial masking.
+4. FastAPI endpoints.
+5. Interactive map and time-series drill-down.
+6. Remaining variables, comparisons, and exports.
+7. Tests, documentation, and demo polish.
+
+The main scientific risks are precipitation-unit interpretation, geographic masking, seasonality, autocorrelation, missing coverage, and multiple hypothesis testing. A scientifically correct interactive trend map with a working time-series drill-down is more valuable than several polished pages built on unverified calculations.
+
+
+## 20. Cursor Agent Execution Contract (Expanded)
+
+Cursor should treat this document as the product specification. Implement incrementally, keep a working repository after every stage, and never replace real scientific calculations with UI-only mock values.
+
+### 20.1 Required implementation order
+
+1. **Repository and contracts:** create the full frontend/backend structure, dependency manifests, `.env.example`, data dictionary, API schemas, and a project README.
+2. **Live-source verification:** make a small request to NASA POWER for each required parameter, inspect the actual response and metadata, verify parameter availability, units, and time semantics, and record the verification in `docs/data-dictionary.md`.
+3. **Canonical Xarray model:** write parser and validation tests first; create Xarray datasets with stable dimensions/coordinates and metadata.
+4. **Geographic boundaries:** acquire and document Myanmar boundary GeoJSON; implement the chosen mask and test known inside/outside points.
+5. **Aggregation:** implement rainfall accumulation, temperature/humidity means, coverage rules, annual/seasonal series, and anomalies.
+6. **Statistics:** implement Sen's slope, Mann–Kendall/seasonal variant, autocorrelation handling, confidence intervals where supported, p-value correction, and status classification.
+7. **Impact indicators:** implement baseline-versus-recent differences, unusual-year counts, anomaly metrics, significant-grid-cell summaries, and area-weighted coverage.
+8. **API:** expose typed endpoints from the same service functions; validate all parameters and add API tests.
+9. **Frontend:** build dashboard, map, trend explorer, comparison view, impact/anomaly view, exports, and methodology page.
+10. **End-to-end verification:** ingest real data, compute at least one end-to-end variable correctly, inspect output units and coordinates, verify map colours against statuses, and run all tests/builds.
+11. **Deployment and demo:** document deployment, persistence/cache behavior, source attribution, known limitations, and a demo sequence.
+
+### 20.2 Definition of a scientifically complete feature
+
+A trend/impact feature is not complete until:
+- It has a backend calculation, not only a frontend display.
+- It has tests for normal and edge cases.
+- It exposes method, unit, period, and coverage metadata.
+- It returns explicit insufficient-data states.
+- It is tied to real NASA-derived observations or is unmistakably labelled synthetic test data.
+- It has a methodology explanation visible to users.
+- Its exports reproduce the displayed results.
+- It does not claim a causal societal impact from climate observations alone.
+
+### 20.3 Dependency and performance rules
+
+- Pin compatible dependency versions after validating the environment. Do not invent a lockfile without resolving dependencies.
+- Start with Xarray plus NumPy/Pandas. Add Dask, Zarr, or xskillscore only if a real scale or functionality requirement justifies them.
+- Avoid eager loading of unnecessarily large arrays. Use chunking only when data size warrants it, and document chunk dimensions.
+- Cache calculations using a key that includes dataset version, variable, spatial mask version, period, aggregation, baseline, trend method, alpha, multiple-testing family, coverage policy, and code/processing version.
+- Never reuse an old trend result after unit conversion, mask, method, baseline, or coverage policy changes.
+- Keep raw API responses immutable; transformed outputs must be reproducible from raw data plus versioned processing rules.
+
+### 20.4 Final response expected from Cursor
+
+At the end, Cursor should report:
+- Files and features implemented.
+- Commands to run frontend/backend locally.
+- Tests and build commands executed, with actual pass/fail outcomes.
+- Data sources and exact date coverage successfully retrieved.
+- Verified units and conversions for each variable.
+- Statistical methods and multiple-testing correction used.
+- Known scientific/data limitations.
+- Deployment instructions and cache/persistent-storage assumptions.
+- Any incomplete requirements, explicitly labelled as incomplete.
+
+Do not state that the project is finished if tests were not run, NASA data could not be validated, or a required analysis is still a placeholder.
