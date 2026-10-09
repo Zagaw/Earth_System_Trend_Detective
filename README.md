@@ -40,7 +40,7 @@ App: http://localhost:5173
 cd backend
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 uvicorn app.main:app --reload
 ```
 
@@ -67,4 +67,35 @@ npm run typecheck
 npm run build
 ```
 
-Analysis libraries (Xarray, GeoPandas, PyMannKendall, and the rest) are listed under the `analysis` extra in `backend/pyproject.toml`. They are not installed yet.
+Analysis libraries (Xarray, GeoPandas, PyMannKendall, and the rest) are listed under the `analysis` extra in `backend/pyproject.toml`. The Render service installs `backend/requirements.txt`. Local ingest and tests use `backend/requirements-dev.txt`.
+
+## Deploy
+
+Deploy the API on Render and the React app on Vercel. The browser calls Render directly, so the Vercel site needs the Render URL at build time, and Render must allow that Vercel origin.
+
+Commit `backend/data/processed/climate_monthly.nc` and `backend/data/processed/regions.json` before connecting Render. Those files are the dataset the API serves. Do not commit `backend/.env` or `backend/data/raw`.
+
+### Render
+
+1. Push the repository, including the two processed data files.
+2. In Render, create a Blueprint from `render.yaml`, or create a Python web service with root directory `backend`.
+3. Build command: `pip install --upgrade pip && pip install -r requirements.txt`
+4. Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+5. Health check: `/api/v1/health`
+6. Set `UNDERSTAND_AI_API_KEY` only if the Understand replies should use OpenRouter. Leave it empty to keep the calculated explanations.
+7. After Vercel has a URL, you can replace `CORS_ORIGINS` with that exact origin, such as `https://your-app.vercel.app`. The blueprint already allows `https://*.vercel.app`.
+
+The service URL will look like `https://earthtrend-myanmar-api.onrender.com`.
+
+### Vercel
+
+1. Import the same repository.
+2. Set the root directory to `frontend`.
+3. Framework preset: Vite. Build command: `npm run build`. Output directory: `dist`.
+4. Add this environment variable, then deploy:
+
+```text
+VITE_API_BASE_URL=https://earthtrend-myanmar-api.onrender.com/api/v1
+```
+
+Use the real Render hostname and do not add a trailing slash. If you change this value later, redeploy the frontend. Vite locks the API address into the build.

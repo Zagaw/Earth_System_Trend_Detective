@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     api_prefix: str = "/api/v1"
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    cors_origin_regex: str = ""
 
     nasa_power_base_url: str = "https://power.larc.nasa.gov/api"
     nasa_power_community: str = "SB"
@@ -47,7 +48,12 @@ class Settings(BaseSettings):
 
     @property
     def cors_origin_list(self) -> list[str]:
-        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+        return [origin.strip().rstrip("/") for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def cors_origin_regex_value(self) -> str | None:
+        value = self.cors_origin_regex.strip()
+        return value or None
 
     @property
     def raw_dir(self) -> Path:

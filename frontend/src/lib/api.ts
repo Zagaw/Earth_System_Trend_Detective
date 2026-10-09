@@ -9,7 +9,8 @@ import type {
   TrendResult,
 } from '../types/api'
 
-export const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+const configuredBase = import.meta.env.VITE_API_BASE_URL?.trim()
+export const API_BASE = (configuredBase || '/api/v1').replace(/\/+$/, '')
 
 export class ApiRequestError extends Error {
   status: number

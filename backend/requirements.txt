@@ -1,15 +1,13 @@
+# Runtime packages for the FastAPI service on Render.
+# Local ingest and tests also need requirements-dev.txt.
 fastapi==0.143.0
 uvicorn[standard]==0.54.0
 pydantic-settings==2.15.0
 httpx==0.28.1
-pytest==9.1.1
 numpy==2.5.3
 pandas==3.0.6
 xarray==2026.9.0
+netCDF4==1.7.4
 scipy==1.18.1
 pymannkendall==1.4.3
-shapely==2.2.0
-geopandas==1.2.0
-pyarrow==25.0.1
-netCDF4==1.7.4
 statsmodels==0.15.0

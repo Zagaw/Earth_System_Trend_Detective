@@ -18,7 +18,6 @@ from app.services.impact import (
 from app.services.interpretation import interpret_impact, interpret_trend
 from app.services.nasa_power import NasaPowerClient
 from app.services.normalization import parse_power_response
-from app.services.spatial_analysis import apply_boundaries
 from app.services.trend_analysis import (
     adjust_pvalues,
     classify_trend,
@@ -74,6 +73,9 @@ class ClimateCatalog:
             )
             parsed[definition.id] = parse_power_response(payload, definition.source_parameter)
         dataset = build_climate_dataset(parsed)
+        # Imported here so the deployed API can start without GeoPandas.
+        from app.services.spatial_analysis import apply_boundaries
+
         dataset, region_catalog = apply_boundaries(dataset, settings.boundary_dir)
         settings.processed_dir.mkdir(parents=True, exist_ok=True)
         dataset_path = settings.processed_dir / "climate_monthly.nc"

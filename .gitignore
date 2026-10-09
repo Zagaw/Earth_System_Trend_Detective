@@ -14,6 +14,9 @@ backend/data/processed/*
 backend/data/cache/*
 backend/data/xarray/*
 !backend/data/**/.gitkeep
+# The deployed API reads these two files. Raw NASA downloads stay local.
+!backend/data/processed/climate_monthly.nc
+!backend/data/processed/regions.json
 
 # Node
 frontend/node_modules/

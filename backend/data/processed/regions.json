@@ -1,0 +1,114 @@
+{
+  "mask_policy": "cell_center_covered_by",
+  "national": {
+    "id": "35516675B14551075264028",
+    "name": "Myanmar",
+    "iso": "MMR",
+    "level": "ADM0",
+    "cell_count": 190
+  },
+  "regions": [
+    {
+      "id": "20573499B9779674920937",
+      "name": "Ayeyarwady",
+      "iso": "MM-07",
+      "level": "ADM1",
+      "cell_count": 10
+    },
+    {
+      "id": "20573499B58864057590207",
+      "name": "Chin",
+      "iso": "MM-14",
+      "level": "ADM1",
+      "cell_count": 9
+    },
+    {
+      "id": "20573499B8199738503087",
+      "name": "Saigang",
+      "iso": "MM-01",
+      "level": "ADM1",
+      "cell_count": 25
+    },
+    {
+      "id": "20573499B79934184351821",
+      "name": "Kachin",
+      "iso": "MM-11",
+      "level": "ADM1",
+      "cell_count": 27
+    },
+    {
+      "id": "20573499B20332088310808",
+      "name": "Kayah",
+      "iso": "MM-12",
+      "level": "ADM1",
+      "cell_count": 3
+    },
+    {
+      "id": "20573499B82081528957960",
+      "name": "Kayin",
+      "iso": "MM-13",
+      "level": "ADM1",
+      "cell_count": 8
+    },
+    {
+      "id": "20573499B51748932062429",
+      "name": "Magway",
+      "iso": "MM-03",
+      "level": "ADM1",
+      "cell_count": 13
+    },
+    {
+      "id": "20573499B45980987355836",
+      "name": "Mandalay",
+      "iso": "MM-04",
+      "level": "ADM1",
+      "cell_count": 11
+    },
+    {
+      "id": "20573499B93796524737308",
+      "name": "Mon",
+      "iso": "MM-15",
+      "level": "ADM1",
+      "cell_count": 2
+    },
+    {
+      "id": "20573499B29373908448635",
+      "name": "Rakhine",
+      "iso": "MM-16",
+      "level": "ADM1",
+      "cell_count": 11
+    },
+    {
+      "id": "20573499B47967485654923",
+      "name": "Tanitharyi",
+      "iso": "MM-05",
+      "level": "ADM1",
+      "cell_count": 12
+    },
+    {
+      "id": "20573499B19694912925518",
+      "name": "Bago",
+      "iso": "MM-02",
+      "level": "ADM1",
+      "cell_count": 12
+    },
+    {
+      "id": "20573499B24734669936209",
+      "name": "Yangon",
+      "iso": "MM-06",
+      "level": "ADM1",
+      "cell_count": 2
+    },
+    {
+      "id": "20573499B82952573339616",
+      "name": "Shan",
+      "iso": "MM-17",
+      "level": "ADM1",
+      "cell_count": 45
+    }
+  ],
+  "boundary_overlap_cells": 0,
+  "unassigned_interior_cells": 0,
+  "latitude_spacing": 0.5,
+  "longitude_spacing": 0.625
+}
