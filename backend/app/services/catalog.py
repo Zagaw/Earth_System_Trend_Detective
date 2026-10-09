@@ -460,6 +460,73 @@ class ClimateCatalog:
         self._case_files[key] = payload
         return payload
 
+    def understand_context(
+        self,
+        variable: str,
+        start_year: int,
+        end_year: int,
+        region_id: str | None = None,
+        compare_region_id: str | None = None,
+    ) -> dict:
+        dossier = self.case_file(start_year, end_year)
+        if variable not in dossier["variables"]:
+            raise ValueError(f"Unknown variable {variable}.")
+        block = dossier["variables"][variable]
+        selected = self._bundle_for(block, region_id)
+        compare = None
+        if compare_region_id:
+            other = self._bundle_for(block, compare_region_id)
+            if other["geography_id"] != selected["geography_id"]:
+                compare = other
+        spacing = self.region_catalog
+        return {
+            "is_sample": False,
+            "source": dossier["source"],
+            "community": dossier["community"],
+            "parameter": block["source_parameter"],
+            "source_unit": block["source_unit"],
+            "analysis_unit": block["unit"],
+            "slope_unit": block["slope_unit"],
+            "decade_unit": block["decade_unit"],
+            "aggregation_rule": block["aggregation_rule"],
+            "variable": variable,
+            "variable_label": block["label"],
+            "start_year": dossier["start_year"],
+            "end_year": dossier["end_year"],
+            "baseline_start_year": dossier["baseline_start_year"],
+            "baseline_end_year": dossier["baseline_end_year"],
+            "comparison_start_year": dossier["comparison_start_year"],
+            "comparison_end_year": dossier["comparison_end_year"],
+            "significance_alpha": dossier["significance_alpha"],
+            "spatial_resolution": (
+                f"{spacing['latitude_spacing']}° latitude by {spacing['longitude_spacing']}° longitude"
+            ),
+            "evidence": dossier["evidence"],
+            "selected": selected,
+            "compare": compare,
+            "region_summaries": [
+                {
+                    "geography_id": item["geography_id"],
+                    "geography_name": item["geography_name"],
+                    "sen_slope": item["sen_slope"],
+                    "slope_per_decade": item["slope_per_decade"],
+                    "trend_status": item["trend_status"],
+                    "adjusted_p_value": item["adjusted_p_value"],
+                    "valid_years": item["valid_years"],
+                }
+                for item in block["regions"]
+            ],
+        }
+
+    def _bundle_for(self, block: dict, region_id: str | None) -> dict:
+        region = self._region(region_id)
+        if region["level"] == "ADM0":
+            return block["national"]
+        for item in block["regions"]:
+            if item["geography_id"] == region["id"]:
+                return item
+        raise UnknownRegion(region["id"])
+
     def _place_bundle(
         self,
         variable: str,

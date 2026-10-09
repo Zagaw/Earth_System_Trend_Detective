@@ -7,6 +7,7 @@ import { CompareTwins } from './sections/CompareTwins'
 import { Evidence } from './sections/Evidence'
 import { Fingerprint } from './sections/Fingerprint'
 import { InvestigationMap } from './sections/InvestigationMap'
+import { ExplainAction } from './components/explain/ExplainAction'
 
 function Shell() {
   const { isLoading, isError, refetch, section, file } = useCase()
@@ -41,6 +42,7 @@ function Shell() {
       <Header />
       <SectionNav />
       <main className="px-4 py-6 pb-24 md:pb-10">
+        <ExplainAction />
         {section === 'overview' ? <CaseOverview /> : null}
         {section === 'map' ? <InvestigationMap /> : null}
         {section === 'fingerprint' ? <Fingerprint /> : null}

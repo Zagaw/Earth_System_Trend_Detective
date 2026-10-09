@@ -14,7 +14,7 @@ export function SectionNav() {
   const { section, setSection } = useCase()
   return (
     <>
-      <nav className="hidden gap-2 border-b border-line px-4 py-3 md:flex">
+      <nav className="hidden flex-wrap gap-2 border-b border-line px-4 py-3 md:flex">
         {items.map((item) => {
           const Icon = item.icon
           const active = section === item.id

@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     cache_ttl_seconds: int = 86400
     processing_version: str = "0.1.0"
 
+    understand_ai_api_key: str = ""
+    understand_ai_base_url: str = "https://openrouter.ai/api/v1"
+    understand_ai_model: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
+    understand_ai_timeout_seconds: float = 90
+
     significance_alpha: float = 0.05
     minimum_valid_years: int = 10
     minimum_valid_months_for_means: int = 10
@@ -35,7 +40,7 @@ class Settings(BaseSettings):
     minimum_spatial_coverage: float = 0.5
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(Path(__file__).resolve().parents[2] / ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )

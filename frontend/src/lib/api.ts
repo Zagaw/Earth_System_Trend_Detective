@@ -67,6 +67,22 @@ const analysisConfigSchema = z.object({
   note: z.string(),
 })
 
+export async function postJson(path: string, payload: unknown): Promise<unknown> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  const body: unknown = await response.json().catch(() => null)
+  if (!response.ok) {
+    const record = body && typeof body === 'object' ? (body as Record<string, unknown>) : {}
+    const message = typeof record.message === 'string' ? record.message : response.statusText
+    const code = typeof record.error === 'string' ? record.error : 'request_failed'
+    throw new ApiRequestError(response.status, code, message)
+  }
+  return body
+}
+
 export async function getJson(path: string): Promise<unknown> {
   const response = await fetch(`${API_BASE}${path}`)
   const body: unknown = await response.json().catch(() => null)

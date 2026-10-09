@@ -1,0 +1,7 @@
+{
+  "mode": "ai",
+  "notice": "This reply interprets the calculated analysis. It is not a new measurement.",
+  "action": "You compared Ayeyarwady with Chin for annual rainfall total.",
+  "answer": "The analysis compared annual rainfall trends in Ayeyarwady and Chin from 2001 to 2025 using NASA POWER data. Each region was tested separately.\n\nFor Ayeyarwady, the estimated Sen's slope is 52.06 mm per year. The trend is statistically significant after adjustment, with a 95% confidence interval of 27.30 to 68.45 mm per year. All 25 years had full data coverage.\n\nFor Chin, the estimated Sen's slope is 75.65 mm per year. This trend is also statistically significant after adjustment, with a 95% confidence interval of 49.62 to 98.17 mm per year. All 25 years had full data coverage.\n\nThe evidence states these are separate tests. A significant result in one region and a significant result in another does not, by itself, show that the two trends differ from each other. No direct comparison test between the two regions was performed.",
+  "manual_start": "You compared Ayeyarwady with Chin for annual rainfall total during 2001–2025. Ayeyarwady is significant increasing with slope 52.063278534788665 mm/year. Chin is significant increasing with slope 75.6453047974225 mm/year. These are separate tests. One significant result and one n"
+}
