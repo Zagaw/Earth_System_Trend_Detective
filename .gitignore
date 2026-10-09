@@ -8,6 +8,13 @@ __pycache__/
 *.egg-info/
 .env
 
+# Cached climate data
+backend/data/raw/*
+backend/data/processed/*
+backend/data/cache/*
+backend/data/xarray/*
+!backend/data/**/.gitkeep
+
 # Node
 frontend/node_modules/
 frontend/dist/

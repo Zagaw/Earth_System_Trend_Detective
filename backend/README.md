@@ -1,6 +1,6 @@
 # Backend
 
-FastAPI application for Earth System Trend Detective.
+FastAPI service for EarthTrend Myanmar.
 
 ```powershell
 py -m venv .venv
@@ -9,6 +9,14 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-API: http://127.0.0.1:8000
+Verify a single NASA POWER point:
 
-Interactive docs: http://127.0.0.1:8000/docs
+```powershell
+python -m app.cli verify
+```
+
+Tests:
+
+```powershell
+python -m pytest
+```

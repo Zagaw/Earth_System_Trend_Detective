@@ -1,12 +1,10 @@
 # Frontend
 
-React 19, Vite, and Tailwind CSS.
+React, TypeScript, Vite, and Tailwind CSS for EarthTrend Myanmar.
 
 ```powershell
 npm install
 npm run dev
 ```
 
-Dev server: http://localhost:5173
-
-Requests to `/api` are proxied to the FastAPI app on port 8000.
+The dev server proxies `/api` to FastAPI on port 8000. Set `VITE_API_BASE_URL` to override the default `/api/v1`.

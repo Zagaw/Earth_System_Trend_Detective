@@ -1,0 +1,33 @@
+[project]
+name = "earthtrend-myanmar"
+version = "0.1.0"
+description = "EarthTrend Myanmar climate-trend API"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic-settings>=2.6",
+    "httpx>=0.28",
+]
+
+[project.optional-dependencies]
+analysis = [
+    "numpy",
+    "pandas",
+    "xarray",
+    "scipy",
+    "pymannkendall",
+    "geopandas",
+    "shapely",
+]
+dev = [
+    "pytest",
+    "ruff",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"

@@ -1,0 +1,415 @@
+=====================================================================
+CURSOR PROMPT v2: EARTHTREND MYANMAR - "CLIMATE CASE FILES"
+Interactive, hackathon-winning UI/UX specification
+=====================================================================
+Team: Star Devs - NASA Space Apps 2026 Practice Round
+Challenge: "Be An Earth System Trend Detective!"
+Time limit: 4 hours. This replaces the v1 UI prompt. The data rules
+from v1 still apply (frontend never calls NASA, never computes
+significance, sample data always labelled).
+
+Features are tagged:
+  [CORE]  must ship - the demo fails without it
+  [WOW]   high impact, cheap - add after CORE works
+  [EXTRA] only if time is left; skip without regret
+
+---------------------------------------------------------------------
+1. THE BIG IDEA (WHY JUDGES WILL REMEMBER IT)
+---------------------------------------------------------------------
+The challenge is called "Trend Detective", so the whole app is a
+detective investigation. The user opens a "case" for each climate
+variable and collects four clues that match the challenge exactly:
+
+  Clue 1 - WHAT is changing?      (the variable)
+  Clue 2 - WHERE is it changing?  (the map)
+  Clue 3 - HOW MUCH?              (Sen's slope)
+  Clue 4 - IS IT SIGNIFICANT?     (verdict stamp)
+
+Every screen answers one of these clues. The detective theme is only
+in the wording, icons and the verdict stamp. The data stays serious,
+honest and clearly labelled.
+
+Visual identity matches the Star Devs logo:
+  deep navy background, gold accents, white text, glowing data colors.
+
+---------------------------------------------------------------------
+2. TECH STACK
+---------------------------------------------------------------------
+  - React + Vite + TypeScript + Tailwind CSS
+  - d3-geo, d3-scale, d3-scale-chromatic, d3-array
+      Maps are drawn as SVG from the GeoJSON (NO tile basemap).
+      Reason: looks beautiful on a dark theme, supports hatch
+      patterns, smooth color transitions, small-multiple maps, and
+      labels - all things that are painful in Leaflet.
+  - Recharts (line charts, bar charts)
+  - framer-motion (panel slides, stamp animation, number count-up)
+  - lucide-react (icons)
+Do NOT add: Leaflet, router, TanStack Query, Redux, UI kits, backend.
+
+---------------------------------------------------------------------
+3. DATA: results.json ADDITIONS (TELL THE DATA PERSON)
+---------------------------------------------------------------------
+Keep the v1 schema. Add one field to every series point:
+  "series": [ { "year": 2001, "value": 26.4, "anomaly": -0.31 } ]
+  anomaly = value - baseline_mean   (computed in Python, null if value
+  is null). The frontend uses it for warming stripes and year mode.
+
+Add to meta:
+  "anomaly_reference": "difference from 2001-2010 average"
+
+If anomaly is missing, the frontend may compute value - baseline_mean
+in ONE helper function (simple subtraction, not statistics).
+
+---------------------------------------------------------------------
+4. DESIGN SYSTEM
+---------------------------------------------------------------------
+Colors:
+  Background        #070B1F (deep space navy)
+  Surface/card      #0F1733 with 1px border #1F2A52, rounded-2xl
+  Gold accent       #FBBF24 (buttons, active tab, highlights)
+  Text primary      #F8FAFC   Text secondary #94A3B8
+  Success/verdict   gold stamp; neutral grey #64748B
+
+Typography: "Poppins" for headings (bold), "Inter" for body.
+Numbers use tabular figures so counters do not jump.
+
+Motion (framer-motion), always under 400ms:
+  - Map colors cross-fade when the variable or year changes.
+  - Numbers count up from 0 when a card appears.
+  - Region panel slides in from the right with a spring.
+  - Verdict stamp drops in with a slight rotation and bounce.
+Respect prefers-reduced-motion: disable animations if set.
+
+Background: subtle static star dots (CSS radial gradients), only in
+the header and hero, never behind charts or maps (keeps data readable).
+
+---------------------------------------------------------------------
+5. PER-VARIABLE MAP VISUALIZATION (THE HEART OF THE APP)
+---------------------------------------------------------------------
+Each variable has its own personality: color palette, icon, words and
+an extra visual layer. All palettes are colour-blind-friendly
+diverging scales centered on zero.
+
+5.1 TEMPERATURE  (icon: Thermometer)
+  Palette:   blue -> near-white -> red   (d3.interpolateRdBu reversed)
+  Words:     "warming" / "cooling"
+  Map layer: region fill = slope per decade.
+  Extra:     region labels show "+0.24°" at each region centroid
+             (only for significant regions, to avoid clutter).
+  Signature visual: WARMING STRIPES - one thin vertical stripe per
+             year colored by anomaly (blue = cooler than baseline,
+             red = warmer). Used in the hero and in the region panel.
+
+5.2 RAINFALL  (icon: CloudRain)
+  Palette:   brown -> near-white -> green  (d3.interpolateBrBG)
+  Words:     "getting wetter" / "getting drier"
+  Map layer: region fill = slope per decade (mm/year per 10 years).
+  Extra:     a small raindrop glyph at each centroid whose SIZE shows
+             the 2016-2025 average rainfall (bigger drop = wetter
+             region). Gives two pieces of information on one map:
+             color = change, size = how much rain it gets.
+  Signature visual: RAIN BARS - small yearly bar chart of rainfall
+             with bars colored by anomaly (brown below baseline,
+             green above).
+
+5.3 HUMIDITY  (icon: Droplets)
+  Palette:   orange-brown -> near-white -> teal (d3.interpolatePuOr
+             or a custom orange-to-teal scale)
+  Words:     "more humid" / "drier air"
+  Map layer: region fill = slope per decade (percentage points).
+  Extra:     centroid labels "-1.2 pp" for significant regions.
+  Signature visual: HUMIDITY STRIPES - same as warming stripes but in
+             the orange-teal palette.
+
+5.4 SIGNIFICANCE ON EVERY MAP (SAME RULE FOR ALL VARIABLES)
+  significant (increase/decrease): full color fill, solid white
+      1.5px border, centroid label shown.
+  not_significant: same hue at 35% opacity PLUS a diagonal hatch
+      pattern (SVG <pattern>), no label. Hatch means "no clear trend".
+  insufficient_data: dark grey fill (#334155) with dotted border.
+  Hover: region lifts (brighter border + soft glow drop-shadow).
+  Selected: thick gold border.
+  The legend explains: solid = significant, hatched = no clear
+  change, grey = not enough data.
+
+5.5 MAP MODES (toggle above the map: segmented control)
+  [CORE] TREND mode (default)
+      Colors = Sen's slope per decade. Answers "where and how much".
+  [WOW]  YEAR-BY-YEAR mode
+      Colors = anomaly for one year (difference from 2001-2010
+      average, using the same palette).
+      A year slider (2001 ... 2025) under the map + a [Play] button
+      that animates through the years (about 400ms per year) with a
+      big faded year number in the map corner ("2017").
+      This makes change visible like a movie - judges love it.
+  [WOW]  THEN vs NOW mode
+      Colors = baseline_recent_diff (2016-2025 average minus
+      2001-2010 average). Legend title: "Change between decades".
+
+5.6 [WOW] FINGERPRINT VIEW (3 small maps side by side)
+  Three small trend maps: Temperature | Rainfall | Humidity, each in
+  its own palette, same size, same region layout. Hovering a region
+  highlights it in ALL THREE maps at once and shows a combined
+  tooltip: "Mandalay: warming +0.3°C, drier -40 mm, drier air -1.2 pp".
+  Purpose: shows instantly that variables can trend one way in one
+  region and the opposite way in another (the exact idea of the
+  challenge).
+
+---------------------------------------------------------------------
+6. LAYOUT AND NAVIGATION
+---------------------------------------------------------------------
+Desktop (1280px+):
+  [Header]  Star Devs logo (small) + "EarthTrend Myanmar"
+            + case selector (3 variable pills with icons, gold when
+              active) + coverage chip + [? How it works] + [Tour]
+  [Main]    Section tabs as large icon buttons:
+              Case Overview | Investigation Map | Fingerprint |
+              Compare Twins | Evidence (methodology)
+  [Content] active section
+Mobile: header collapses; section tabs become a bottom nav bar with
+icons; region panel becomes a bottom sheet.
+
+URL hash keeps state for sharing/demo (e.g. #map/humidity/MMR-07)
+[EXTRA].
+
+Keyboard shortcuts [WOW, cheap]:
+  1/2/3 = switch variable, Space = play/pause year animation,
+  Esc = close panel, arrow keys = step years.
+Show them in a small "?" tooltip.
+
+---------------------------------------------------------------------
+7. SCREEN-BY-SCREEN FLOW
+---------------------------------------------------------------------
+
+7.1 [CORE] LOADING
+  Navy screen, logo, text "Opening the case files..." with a thin
+  gold progress bar. If loading fails: "Could not load the evidence.
+  [Try again]".
+
+7.2 [CORE] CASE OVERVIEW (landing)
+  A) HERO STRIP
+     Big heading: "Is Myanmar's climate changing? Let's investigate."
+     Subheading: "25 years of NASA satellite and model data,
+     2001-2025."
+     Under it: full-width WARMING STRIPES for Myanmar's national
+     temperature (one stripe per year, labelled 2001 and 2025 at the
+     ends). Hover a stripe -> "2016: +0.42 °C vs 2001-2010 average".
+     If the selected case is rainfall or humidity, the stripes switch
+     to that variable's palette and anomaly series.
+     Button: [Start the investigation ->] (gold) goes to the map.
+
+  B) THREE CASE CARDS (one per variable)
+     Each card: icon, variable name, big counting-up number
+     "+0.24 °C per 10 years", the national VERDICT STAMP, mini
+     sparkline, and a "clue strip" with 4 small check icons:
+       What [x]  Where [x]  How much [x]  Significant [x]
+     Clicking a card selects that case (variable) everywhere.
+     The selected card glows gold.
+
+  C) HEADLINE + "WHERE" SUMMARY
+     Plain-language sentence for the selected case (templates from
+     v1). Below it a horizontal stacked bar of regions:
+       [blue part: 6 drier] [hatched part: 7 no clear change]
+       [teal part: 2 more humid]
+     Hover each part to see the region names. Click -> map, with
+     those regions highlighted.
+
+7.3 [CORE] INVESTIGATION MAP (main demo screen)
+  Layout: map on the left (about 65% width), "Clue board" on the
+  right (35%).
+  Above the map: map mode switch (Trend | Year-by-year | Then vs
+  Now) and the variable pills (same state as header).
+
+  MAP (see section 5): SVG Myanmar map, regions colored, labels for
+  significant regions, legend bottom-left (gradient bar with min, 0,
+  max and unit; swatches for solid/hatched/grey), hover tooltip:
+      Mandalay Region
+      -1.5 pp per 10 years  (drier air)
+      Verdict: Significant
+      [Tap for full case]
+
+  CLUE BOARD (right side, changes with the variable):
+    - "Top 3 strongest increases" and "Top 3 strongest decreases"
+      as small ranked cards with a horizontal bar each. Hover a card
+      -> that region glows on the map. Click -> opens Region Case.
+    - Mini diverging bar chart of ALL regions (sorted), colored with
+      the map palette, hatched bars for not significant. Hovering a
+      bar highlights the region on the map and vice versa (linked
+      highlighting = feels very interactive).
+    - In YEAR mode the clue board shows "This year's warmest/
+      wettest/most humid region" for the slider year.
+
+7.4 [CORE] REGION CASE PANEL (click any region)
+  Slides in from the right over the clue board (bottom sheet on
+  mobile). Sections:
+    A) Header: region name, variable icon, and the animated VERDICT
+       STAMP: "SIGNIFICANT INCREASE" / "SIGNIFICANT DECREASE" /
+       "NO CLEAR TREND" / "NOT ENOUGH DATA" (rubber-stamp style,
+       rotated -6 degrees, gold or grey border).
+    B) Signature visual for the variable (warming stripes, rain bars
+       or humidity stripes) for this region.
+    C) Trend chart: yearly values with dots, dashed Sen trend line,
+       and a soft shaded band between baseline average and recent
+       average periods (two light vertical bands labelled
+       "2001-2010" and "2016-2025"). Tooltip per year.
+    D) Clue cards in a 2x2 grid:
+         WHAT:  variable + unit
+         HOW MUCH: "+0.24 °C per 10 years" (count-up) and per year
+         THEN vs NOW: "2001-2010: 26.1°C -> 2016-2025: 26.5°C"
+         SIGNIFICANT?: corrected p-value with a tiny gauge showing
+                       where it sits relative to 0.05
+       Each card has an (i) tooltip in plain words.
+    E) "Detective's note": plain-language explanation (v1 templates,
+       observed / may be relevant to wording, no causes).
+    F) Buttons: [Compare with...] and [Next region ->] (cycles through
+       regions in ranking order - great for live demos).
+
+7.5 [WOW] FINGERPRINT (section 5.6)
+  Three small maps + combined tooltip + a short caption that only
+  states what the data shows, e.g. "Regions where variables move in
+  different directions are outlined in gold." (outline a region in
+  gold when at least two variables are significant in opposite
+  directions; if none, show "No region has opposite significant
+  trends across variables in this period.").
+
+7.6 [CORE] COMPARE TWINS
+  Two region pickers (or click two regions on a small map: first
+  click = A, second click = B).
+  - Two-line chart (A orange, B teal) with both trend lines.
+  - Side-by-side clue cards with both verdict stamps.
+  - OPPOSITE TRENDS banner (only when one is significant increase and
+    the other significant decrease): animated gold border,
+    "Opposite trends found! Rainfall is rising in A but falling in B
+    over the same years."
+  - [WOW] "Suggest twins" button: picks the pair of regions with the
+    most opposite significant slopes for the current variable and
+    fills A and B automatically. If no such pair exists, show "No
+    opposite significant pair found for this variable."
+  - Full ranking table under it (sortable columns, hatched/grey rows
+    for not significant/insufficient) + [Download CSV].
+
+7.7 [CORE] EVIDENCE (methodology)
+  Styled like an evidence locker with collapsible sections:
+  Data source | Variables & units | How regions are built |
+  How trends are measured | How significance works |
+  Limitations | Credits (NASA POWER, geoBoundaries, Team Star Devs).
+  Content as in v1, generated from results.json meta where possible.
+
+7.8 [WOW] GUIDED TOUR ("Start investigation" or the Tour button)
+  A 5-step spotlight walkthrough (custom overlay, no library):
+    1. "Pick a case" -> highlights the variable pills
+    2. "Clue 2: Where?" -> highlights the map
+    3. "Clue 3: How much?" -> highlights the legend
+    4. "Clue 4: Significant?" -> opens a region and highlights stamp
+    5. "Compare twins" -> highlights the Compare tab
+  Each step: dark overlay, a cut-out around the element, short text,
+  [Back] [Next] [Skip]. Doubles as the live demo script.
+
+---------------------------------------------------------------------
+8. MICRO-INTERACTIONS CHECKLIST
+---------------------------------------------------------------------
+  [ ] Map and chart colors cross-fade on variable change.
+  [ ] Linked highlighting: map <-> bar chart <-> ranking table.
+  [ ] Count-up numbers on cards and clue cards.
+  [ ] Verdict stamp animation on panel open.
+  [ ] Play button animates the years; slider scrubbing is smooth.
+  [ ] Hover glow on regions; gold border on selected region.
+  [ ] Empty states are friendly ("Pick two regions to compare").
+  [ ] Tooltips always include units and plain-language status.
+
+---------------------------------------------------------------------
+9. HONESTY RULES (KEEP - JUDGES CHECK THIS)
+---------------------------------------------------------------------
+  - Never compute or change significance in the frontend.
+  - Never draw nulls as zero; show gaps in charts and grey on maps.
+  - Every number shows its unit.
+  - Opposite-trend banners and gold outlines appear only when the
+    real statuses justify them.
+  - No causal words ("caused", "due to", "because of").
+  - If meta.is_sample is true, show a yellow non-closable banner
+    "SAMPLE DATA - NOT REAL NASA RESULTS" and add the same line to
+    CSV exports.
+
+---------------------------------------------------------------------
+10. FILE STRUCTURE
+---------------------------------------------------------------------
+src/
+  App.tsx, main.tsx, types.ts
+  context/AppContext.tsx      (variable, section, mapMode, year,
+                               playing, selectedRegion, hoverRegion,
+                               compareA, compareB, tourStep)
+  lib/ loadData.ts format.ts colors.ts interpret.ts csv.ts
+       geo.ts (projection, path, centroids) twins.ts
+  components/
+    layout/  Header.tsx SectionNav.tsx SampleBanner.tsx
+    map/     MyanmarMap.tsx (reusable: size, mode, variable props)
+             MapLegend.tsx HatchPattern.tsx RegionTooltip.tsx
+             YearSlider.tsx CentroidLayer.tsx (labels, raindrops)
+    viz/     Stripes.tsx RainBars.tsx Sparkline.tsx TrendChart.tsx
+             DivergingBars.tsx PValueGauge.tsx CountUp.tsx
+    case/    CaseCard.tsx VerdictStamp.tsx ClueCard.tsx
+             DetectiveNote.tsx RegionCasePanel.tsx
+    compare/ CompareChart.tsx OppositeBanner.tsx RankingTable.tsx
+    tour/    GuidedTour.tsx
+    EvidenceModal.tsx LoadingScreen.tsx ErrorScreen.tsx
+  sections/
+    CaseOverview.tsx InvestigationMap.tsx Fingerprint.tsx
+    CompareTwins.tsx Evidence.tsx
+
+MyanmarMap must be ONE reusable component used by the main map,
+the fingerprint small multiples and the compare mini-map.
+
+---------------------------------------------------------------------
+11. BUILD ORDER (KEEP THE APP RUNNING AFTER EVERY STEP)
+---------------------------------------------------------------------
+  Step 1 (20 min)  Setup, theme, types, sample JSON (is_sample: true),
+                   loading/error screens, header + variable pills.
+  Step 2 (40 min)  [CORE] MyanmarMap in TREND mode with palettes,
+                   hatch pattern, legend, tooltip, centroid labels.
+  Step 3 (35 min)  [CORE] Region Case Panel: stamp, trend chart,
+                   clue cards, detective's note.
+  Step 4 (25 min)  [CORE] Case Overview: hero stripes, case cards,
+                   headline, region summary bar.
+  Step 5 (25 min)  [CORE] Compare Twins + ranking table + CSV,
+                   Evidence modal.
+  -- swap in real results.json and verify --
+  Step 6 (20 min)  [WOW] Year-by-year mode with Play + clue board
+                   linked bar chart.
+  Step 7 (15 min)  [WOW] Fingerprint small multiples.
+  Step 8 (15 min)  [WOW] Guided tour, Suggest twins, shortcuts.
+  [EXTRA] Then vs Now mode, raindrop glyphs, URL hash state.
+  Last 15 min: mobile check, npm run build, deploy (Netlify/Vercel).
+
+---------------------------------------------------------------------
+12. DEMO SCRIPT (2 MINUTES, FOLLOWS THE TOUR)
+---------------------------------------------------------------------
+  1. Case Overview: "Here's 25 years of Myanmar's temperature as
+     stripes - you can see the change before reading a number."
+  2. Switch to Humidity: everything re-colors.
+  3. Investigation Map: "Solid regions show significant trends,
+     hatched ones don't." Press Play in Year mode.
+  4. Click the strongest region: verdict stamp, trend line, clues.
+  5. Fingerprint: hover one region, see all three variables at once.
+  6. Compare Twins: Suggest twins -> opposite trends banner (only if
+     the real data shows it).
+  7. Evidence: "Every number is NASA POWER data with Mann-Kendall,
+     Sen's slope and Benjamini-Hochberg correction."
+
+---------------------------------------------------------------------
+13. ACCEPTANCE CHECKLIST
+---------------------------------------------------------------------
+  [ ] Variable switch re-colors every map, chart, card and table.
+  [ ] Each variable uses its own palette, words and signature visual.
+  [ ] Significant = solid, not significant = hatched, missing = grey,
+      and the legend says so.
+  [ ] Hover and click work on map regions; linked highlighting works.
+  [ ] Region panel shows stamp, stripes/bars, trend chart, clues,
+      detective's note.
+  [ ] Year mode slider and Play animate the map smoothly (if built).
+  [ ] Compare shows the opposite banner only when justified.
+  [ ] CSV export matches the table; units everywhere; no null/NaN.
+  [ ] Sample data always labelled; real data never labelled sample.
+  [ ] Works on laptop and phone; npm run build succeeds.
+
+After each step report: files changed, whether it runs, and anything
+still a placeholder (labelled clearly).

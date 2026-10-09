@@ -1,11 +1,66 @@
+from functools import lru_cache
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    app_name: str = "Earth System Trend Detective API"
-    cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    app_env: str = "development"
+    app_name: str = "EarthTrend Myanmar API"
+    app_version: str = "0.1.0"
+    api_prefix: str = "/api/v1"
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    nasa_power_base_url: str = "https://power.larc.nasa.gov/api"
+    nasa_power_community: str = "SB"
+    nasa_timeout_seconds: float = 120
+    nasa_max_retries: int = 3
+
+    default_start_year: int = 2001
+    default_end_year: int = 2025
+    latitude_min: float = 9
+    latitude_max: float = 29
+    longitude_min: float = 92
+    longitude_max: float = 102
+
+    data_dir: Path = Path("./data")
+    cache_enabled: bool = True
+    cache_ttl_seconds: int = 86400
+    processing_version: str = "0.1.0"
+
+    significance_alpha: float = 0.05
+    minimum_valid_years: int = 10
+    minimum_valid_months_for_means: int = 10
+    minimum_valid_months_for_rainfall_total: int = 12
+    minimum_spatial_coverage: float = 0.5
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def raw_dir(self) -> Path:
+        return self.data_dir / "raw"
+
+    @property
+    def processed_dir(self) -> Path:
+        return self.data_dir / "processed"
+
+    @property
+    def cache_dir(self) -> Path:
+        return self.data_dir / "cache"
+
+    @property
+    def boundary_dir(self) -> Path:
+        return self.data_dir / "boundaries"
 
 
-settings = Settings()
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
